@@ -14,6 +14,6 @@ script:
   - |
     echo ">>> Install dependencies"
     npm install
-    echo ">>> Rn tests"
+    echo ">>> Run tests"
     npm run test
 cache: yarn
