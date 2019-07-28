@@ -3,6 +3,7 @@
 	"displayName": "Santoku",
 	"description": "Editor for creating step-by-step programming tutorials.",
 	"version": "0.0.1",
+	"publisher": "andrewhead",
 	"engines": {
 		"vscode": "^1.36.0"
 	},
