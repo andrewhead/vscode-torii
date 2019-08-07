@@ -28,23 +28,23 @@ suite("WebviewSantokuConnector", () => {
   test("sends a message to the webview", () => {
     let messageSent;
     const wv = webview();
-    wv.postMessage = (message) => {
+    wv.postMessage = message => {
       messageSent = message;
-      return new Promise((() => {}));
+      return new Promise(() => {});
     };
     const connector = new WebviewSantokuConnector(wv);
-    connector.sendMessage({ type: "example-type", data: {} });
-    assert.deepEqual(messageSent, { type: "example-type", data: {} });
+    connector.sendMessage({ id: "message-id", type: "example-type", data: {} });
+    assert.deepEqual(messageSent, { id: "message-id", type: "example-type", data: {} });
   });
 
   test("forwards messages sent from the window to subscribers", done => {
     const wv = webview();
-    const listener = ((message: Message) => {
+    const listener = (message: Message) => {
       assert.deepEqual(message, { type: "type", data: {} });
       done();
-    });
+    };
     const connector = new WebviewSantokuConnector(wv);
     connector.subscribe(listener);
-    triggerWebviewMessage(wv, { type: 'type', data: {}});
+    triggerWebviewMessage(wv, { id: "message-id", type: "type", data: {} });
   });
 });

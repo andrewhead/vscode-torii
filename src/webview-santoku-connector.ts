@@ -20,7 +20,7 @@ export class WebviewSantokuConnector extends SantokuConnector {
     this._webview = webview;
   }
 
-  sendMessage(message: Message) {
+  _sendMessage(message: Message) {
     this._webview.postMessage(message);
   }
 
