@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import { Message } from "santoku-editor-adapter";
-import { ViewColumn, window, Webview } from "vscode";
+import { ViewColumn, Webview, window } from "vscode";
+import { generateNonce } from "../../santoku-panel";
 import { WebviewSantokuConnector } from "../../webview-santoku-connector";
-import { generateNonce } from "../../extension";
 
 export function webview() {
   return window.createWebviewPanel("test", "Test", ViewColumn.One, { enableScripts: true }).webview;
@@ -40,7 +40,8 @@ suite("WebviewSantokuConnector", () => {
   test("forwards messages sent from the window to subscribers", done => {
     const wv = webview();
     const listener = (message: Message) => {
-      assert.deepEqual(message, { type: "type", data: {} });
+      assert.strictEqual(message.type, "type");
+      assert.deepStrictEqual(message.data, {});
       done();
     };
     const connector = new WebviewSantokuConnector(wv);

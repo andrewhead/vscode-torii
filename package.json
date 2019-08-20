@@ -11,7 +11,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:extension.helloWorld"
+    "onCommand:extension.helloWorld",
+    "onCommand:extension.eventListener"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,6 +24,10 @@
       {
         "command": "extension.addSnippet",
         "title": "Add snippet"
+      },
+      {
+        "command": "extension.eventListener",
+        "title": "Listen to events"
       }
     ]
   },

@@ -1,165 +1,95 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
-import * as path from 'path';
-import { SantokuAdapter } from "santoku-editor-adapter";
-import { actions } from "santoku-store";
-import * as vscode from 'vscode';
-import { WebviewSantokuConnector } from './webview-santoku-connector';
+import { actions, Selection, SourceType, State } from "santoku-store";
+import { InitialChunk } from "santoku-store/dist/text/chunks/types";
+import * as vscode from "vscode";
+import { SantokuPanel } from "./santoku-panel";
 
+function updateSelections(state: State) {
+  for (const editor of vscode.window.visibleTextEditors) {
+    if (editor !== vscode.window.activeTextEditor) {
+      const selections = state.text.present.selections
+        .filter(s => s.path === editor.document.fileName)
+        .map(s => {
+          if (s.relativeTo.source === SourceType.REFERENCE_IMPLEMENTATION) {
+            return new vscode.Selection(
+              new vscode.Position(s.anchor.line, s.anchor.character),
+              new vscode.Position(s.active.line, s.active.character)
+            );
+          } else if (s.relativeTo.source === SourceType.CHUNK_VERSION) {
+            const chunkVersion = state.text.present.chunkVersions.byId[s.relativeTo.chunkVersionId];
+            const chunk = state.text.present.chunks.byId[chunkVersion.chunk];
+            const offset = chunk.location.line;
+            return new vscode.Selection(
+              new vscode.Position(s.anchor.line + offset - 1, s.anchor.character),
+              new vscode.Position(s.active.line + offset - 1, s.active.character)
+            );
+          }
+        })
+        .filter((s): s is vscode.Selection => s !== undefined);
+      editor.selections = selections;
+    }
+  }
+}
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
+  console.log("Congratulations, Santoku is now active!");
 
-	// Use the console to output diagnostic information (console.log) and errors (console.error)
-	// This line of code will only be executed once when your extension is activated
-	console.log('Congratulations, Santoku is now active!');
-
-	// The command has been defined in the package.json file
-	// Now provide the implementation of the command with registerCommand
-	// The commandId parameter must match the command field in package.json
-	let disposable = vscode.commands.registerCommand('extension.helloWorld', () => {
-		// The code you place here will be executed every time your command is executed
+  let disposable = vscode.commands.registerCommand("extension.helloWorld", () => {
+    // const updateSelectionsCallback = deferrable(updateSelections);
 
     SantokuPanel.createOrShow(context.extensionPath);
+    vscode.window.onDidChangeTextEditorSelection(event => {
+      const editor = event.textEditor;
+      if (SantokuPanel.santokuAdapter !== undefined && editor === vscode.window.activeTextEditor) {
+        // updateSelectionsCallback.defer(500);
+        SantokuPanel.santokuAdapter.dispatch(
+          actions.text.setSelections(
+            ...event.selections.map(s => {
+              return {
+                anchor: s.anchor,
+                active: s.active,
+                path: editor.document.fileName,
+                relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
+              } as Selection;
+            })
+          )
+        );
+        SantokuPanel.santokuAdapter.addStateChangeListener(updateSelections);
+      }
+    });
   });
-  
-  let disposable2 = vscode.commands.registerCommand('extension.addSnippet', () => {
+
+  let disposable2 = vscode.commands.registerCommand("extension.addSnippet", () => {
     if (SantokuPanel.currentPanel !== undefined) {
-      SantokuPanel.currentPanel.doRefactor();
+      const activeTextEditor = vscode.window.activeTextEditor;
+      const chunks: InitialChunk[] = [];
+      if (activeTextEditor !== undefined) {
+        const selections = activeTextEditor.selections;
+        for (const selection of selections) {
+          const startLine = selection.start.line;
+          const endLine = selection.end.line;
+          const chunk: InitialChunk = {
+            location: { path: activeTextEditor.document.fileName, line: startLine },
+            text: activeTextEditor.document.getText(
+              new vscode.Range(
+                new vscode.Position(startLine, 0),
+                new vscode.Position(endLine, Number.POSITIVE_INFINITY)
+              )
+            )
+          };
+          chunks.push(chunk);
+        }
+      }
+      if (chunks.length > 0 && SantokuPanel.santokuAdapter !== undefined) {
+        SantokuPanel.santokuAdapter.dispatch(actions.text.createSnippet(0, ...chunks));
+      }
     }
   });
 
-	context.subscriptions.push(disposable);
+  context.subscriptions.push(disposable);
+  context.subscriptions.push(disposable2);
 }
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
-
-
-/**
- * Manages react webview panels
- */
-class SantokuPanel {
-	/**
-	 * Track the currently panel. Only allow a single panel to exist at a time.
-	 */
-  public static currentPanel: SantokuPanel | undefined;
-  public static santokuAdapter: SantokuAdapter | undefined;
-
-	private static readonly viewType = 'santoku';
-
-	private readonly _panel: vscode.WebviewPanel;
-	private readonly _extensionPath: string;
-	private readonly _santokuBuildPath: string;
-	private _disposables: vscode.Disposable[] = [];
-
-	public static createOrShow(extensionPath: string) {
-		const column = vscode.window.activeTextEditor ? vscode.window.activeTextEditor.viewColumn : undefined;
-
-		// If we already have a panel, show it.
-		// Otherwise, create a new panel.
-		if (SantokuPanel.currentPanel) {
-			SantokuPanel.currentPanel._panel.reveal(column);
-		} else {
-			SantokuPanel.currentPanel = new SantokuPanel(extensionPath, column || vscode.ViewColumn.One);
-		}
-	}
-
-	private constructor(extensionPath: string, column: vscode.ViewColumn) {
-		this._extensionPath = extensionPath;
-		this._santokuBuildPath = path.join(this._extensionPath, 'node_modules', 'santoku', 'build');
-
-		// Create and show a new webview panel
-		this._panel = vscode.window.createWebviewPanel(SantokuPanel.viewType, "React", column, {
-			// Enable javascript in the webview
-			enableScripts: true,
-
-			// And restric the webview to only loading content from our extension's `media` directory.
-			localResourceRoots: [
-				vscode.Uri.file(this._santokuBuildPath)
-			]
-    });
-    
-    SantokuPanel.santokuAdapter = new SantokuAdapter(new WebviewSantokuConnector(this._panel.webview));
-    SantokuPanel.santokuAdapter.addStateChangeListener((state) => {
-      console.log(state);
-    });
-		
-		// Set the webview's initial html content 
-		this._panel.webview.html = this._getHtmlForWebview();
-
-		// Listen for when the panel is disposed
-		// This happens when the user closes the panel or when the panel is closed programatically
-		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
-	}
-
-	public doRefactor() {
-		// Send a message to the webview webview.
-		// You can send any JSON serializable data.
-		if (SantokuPanel.santokuAdapter !== undefined) {
-      SantokuPanel.santokuAdapter.dispatch(actions.step.createStep(0));
-    }
-	}
-
-	public dispose() {
-		SantokuPanel.currentPanel = undefined;
-
-		// Clean up our resources
-		this._panel.dispose();
-
-		while (this._disposables.length) {
-			const x = this._disposables.pop();
-			if (x) {
-				x.dispose();
-			}
-		}
-	}
-
-	private _getHtmlForWebview() {
-		const manifest = require(path.join(this._santokuBuildPath, 'asset-manifest.json'));
-		const mainScript = manifest['main.js'];
-		const mainStyle = manifest['main.css'];
-
-		const scriptPathOnDisk = vscode.Uri.file(path.join(this._santokuBuildPath, mainScript));
-		const scriptUri = scriptPathOnDisk.with({ scheme: 'vscode-resource' });
-		const stylePathOnDisk = vscode.Uri.file(path.join(this._santokuBuildPath, mainStyle));
-		const styleUri = stylePathOnDisk.with({ scheme: 'vscode-resource' });
-
-		// Use a nonce to whitelist which scripts can be run
-		const nonce = generateNonce();
-
-		return `<!DOCTYPE html>
-			<html lang="en">
-			<head>
-				<meta charset="utf-8">
-				<meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
-				<meta name="theme-color" content="#000000">
-				<title>React App</title>
-				<link rel="stylesheet" type="text/css" href="${styleUri}">
-				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src vscode-resource: https:; script-src 'nonce-${nonce}';style-src vscode-resource: 'unsafe-inline' http: https: data:;">
-				<base href="${vscode.Uri.file(this._santokuBuildPath).with({ scheme: 'vscode-resource' })}/">
-			</head>
-			<body>
-				<noscript>You need to enable JavaScript to run this app.</noscript>
-				<div id="root"></div>
-				
-				<script nonce="${nonce}" src="${scriptUri}"></script>
-        <script nonce="${nonce}">
-          <!--Open a connection from Santoku to this editor.-->
-          const connector = new santoku.VsCodeWebviewEditorConnector(acquireVsCodeApi());
-          const adapter = new santoku.EditorAdapter(santoku.store, connector);
-				</script>
-			</body>
-			</html>`;
-	}
-}
-
-export function generateNonce() {
-	let text = "";
-	const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-	for (let i = 0; i < 32; i++) {
-		text += possible.charAt(Math.floor(Math.random() * possible.length));
-	}
-	return text;
-}
