@@ -5,44 +5,20 @@ import { InitialChunk } from "santoku-store/dist/text/chunks/types";
 import * as vscode from "vscode";
 import { SantokuPanel } from "./santoku-panel";
 
-function updateSelections(state: State) {
-  for (const editor of vscode.window.visibleTextEditors) {
-    if (editor !== vscode.window.activeTextEditor) {
-      const selections = state.text.present.selections
-        .filter(s => s.path === editor.document.fileName)
-        .map(s => {
-          if (s.relativeTo.source === SourceType.REFERENCE_IMPLEMENTATION) {
-            return new vscode.Selection(
-              new vscode.Position(s.anchor.line, s.anchor.character),
-              new vscode.Position(s.active.line, s.active.character)
-            );
-          } else if (s.relativeTo.source === SourceType.CHUNK_VERSION) {
-            const chunkVersion = state.text.present.chunkVersions.byId[s.relativeTo.chunkVersionId];
-            const chunk = state.text.present.chunks.byId[chunkVersion.chunk];
-            const offset = chunk.location.line;
-            return new vscode.Selection(
-              new vscode.Position(s.anchor.line + offset - 1, s.anchor.character),
-              new vscode.Position(s.active.line + offset - 1, s.active.character)
-            );
-          }
-        })
-        .filter((s): s is vscode.Selection => s !== undefined);
-      editor.selections = selections;
-    }
-  }
-}
-
 export function activate(context: vscode.ExtensionContext) {
-  console.log("Congratulations, Santoku is now active!");
+  console.log("Santoku has been activated!");
 
-  let disposable = vscode.commands.registerCommand("extension.helloWorld", () => {
-    // const updateSelectionsCallback = deferrable(updateSelections);
-
+  let startCommand = vscode.commands.registerCommand("santoku.start", () => {
     SantokuPanel.createOrShow(context.extensionPath);
     vscode.window.onDidChangeTextEditorSelection(event => {
       const editor = event.textEditor;
+      /**
+       * Only report selection changes from the active text editor. Assume that selections in
+       * all other editors are just updating to reflect selections in an active editor. Updates
+       * to the active editor from external sources are already filtered out in the
+       * 'updateSelections' callback.
+       */
       if (SantokuPanel.santokuAdapter !== undefined && editor === vscode.window.activeTextEditor) {
-        // updateSelectionsCallback.defer(500);
         SantokuPanel.santokuAdapter.dispatch(
           actions.text.setSelections(
             ...event.selections.map(s => {
@@ -60,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
   });
 
-  let disposable2 = vscode.commands.registerCommand("extension.addSnippet", () => {
+  let addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
     if (SantokuPanel.currentPanel !== undefined) {
       const activeTextEditor = vscode.window.activeTextEditor;
       const chunks: InitialChunk[] = [];
@@ -87,8 +63,40 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
-  context.subscriptions.push(disposable);
-  context.subscriptions.push(disposable2);
+  context.subscriptions.push(startCommand);
+  context.subscriptions.push(addSnippetCommand);
+}
+
+function updateSelections(state: State) {
+  for (const editor of vscode.window.visibleTextEditors) {
+    /**
+     * Only update selections in non-active editors. Assume for now that VSCode is a single-user
+     * application; an active editor is probably generating the selections, and a non-active
+     * editor should be used to mirror selections from an active editor.
+     */
+    if (editor !== vscode.window.activeTextEditor) {
+      const selections = state.text.present.selections
+        .filter(s => s.path === editor.document.fileName)
+        .map(s => {
+          if (s.relativeTo.source === SourceType.REFERENCE_IMPLEMENTATION) {
+            return new vscode.Selection(
+              new vscode.Position(s.anchor.line, s.anchor.character),
+              new vscode.Position(s.active.line, s.active.character)
+            );
+          } else if (s.relativeTo.source === SourceType.CHUNK_VERSION) {
+            const chunkVersion = state.text.present.chunkVersions.byId[s.relativeTo.chunkVersionId];
+            const chunk = state.text.present.chunks.byId[chunkVersion.chunk];
+            const offset = chunk.location.line;
+            return new vscode.Selection(
+              new vscode.Position(s.anchor.line + offset - 1, s.anchor.character),
+              new vscode.Position(s.active.line + offset - 1, s.active.character)
+            );
+          }
+        })
+        .filter((s): s is vscode.Selection => s !== undefined);
+      editor.selections = selections;
+    }
+  }
 }
 
 // this method is called when your extension is deactivated

@@ -11,23 +11,18 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:extension.helloWorld",
-    "onCommand:extension.eventListener"
+    "onCommand:santoku.start"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "extension.helloWorld",
+        "command": "santoku.start",
         "title": "Create tutorial"
       },
       {
-        "command": "extension.addSnippet",
+        "command": "santoku.addSnippet",
         "title": "Add snippet"
-      },
-      {
-        "command": "extension.eventListener",
-        "title": "Listen to events"
       }
     ]
   },
