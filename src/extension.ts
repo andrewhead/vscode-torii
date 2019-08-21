@@ -1,39 +1,25 @@
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import { actions, Selection, SourceType, State } from "santoku-store";
-import { InitialChunk } from "santoku-store/dist/text/chunks/types";
+import { actions, InitialChunk, Selection, SourceType, State } from "santoku-store";
 import * as vscode from "vscode";
 import { SantokuPanel } from "./santoku-panel";
+
+export const DEBUG_MODE_KEY = "DEBUG_MODE";
 
 export function activate(context: vscode.ExtensionContext) {
   console.log("Santoku has been activated!");
 
+  /*
+   * Inspect environment variables to decide if the extension should run in debug mode.
+   */
+  if (process !== undefined && process.env !== undefined) {
+    context.globalState.update(DEBUG_MODE_KEY, process.env.DEBUG === "true");
+  } else {
+    context.globalState.update(DEBUG_MODE_KEY, false);
+  }
+
   let startCommand = vscode.commands.registerCommand("santoku.start", () => {
-    SantokuPanel.createOrShow(context.extensionPath);
-    vscode.window.onDidChangeTextEditorSelection(event => {
-      const editor = event.textEditor;
-      /**
-       * Only report selection changes from the active text editor. Assume that selections in
-       * all other editors are just updating to reflect selections in an active editor. Updates
-       * to the active editor from external sources are already filtered out in the
-       * 'updateSelections' callback.
-       */
-      if (SantokuPanel.santokuAdapter !== undefined && editor === vscode.window.activeTextEditor) {
-        SantokuPanel.santokuAdapter.dispatch(
-          actions.text.setSelections(
-            ...event.selections.map(s => {
-              return {
-                anchor: s.anchor,
-                active: s.active,
-                path: editor.document.fileName,
-                relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
-              } as Selection;
-            })
-          )
-        );
-        SantokuPanel.santokuAdapter.addStateChangeListener(updateSelections);
-      }
-    });
+    SantokuPanel.createOrShow(context.extensionPath, context.globalState.get(DEBUG_MODE_KEY));
+    syncSelections();
+    syncText();
   });
 
   let addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
@@ -67,6 +53,89 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(addSnippetCommand);
 }
 
+function isEditorActive(editor: vscode.TextEditor): boolean {
+  return editor === vscode.window.activeTextEditor;
+}
+
+function isDocumentActive(document: vscode.TextDocument): boolean {
+  return vscode.window.visibleTextEditors.some(editor => {
+    return editor.document === document && isEditorActive(editor);
+  });
+}
+
+function syncText() {
+  /*
+   * TODO(andrewhead): update the reference to the Santoku adapter if the panel refreshes.
+   * Maybe add listeners to SantokuPanel, which forwards events from the active adapter.
+   */
+  if (SantokuPanel.santokuAdapter !== undefined) {
+    SantokuPanel.santokuAdapter.addStateChangeListener(updateText);
+  }
+
+  vscode.workspace.onDidChangeTextDocument(event => {
+    const document = event.document;
+    if (SantokuPanel.santokuAdapter !== undefined && isDocumentActive(document)) {
+      for (const change of event.contentChanges) {
+        SantokuPanel.santokuAdapter.dispatch(
+          actions.text.edit(
+            {
+              start: change.range.start,
+              end: change.range.end,
+              path: document.fileName,
+              relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
+            },
+            change.text
+          )
+        );
+      }
+    }
+  });
+}
+
+/**
+ * TODO(andrewhead): listen for changes in state.
+ */
+function updateText(state: State) {
+  const textState = state.text.present;
+  for (const chunkId of textState.chunks.all) {
+    const chunk = textState.chunks.byId[chunkId];
+    const firstChunkVersion = textState.chunks.byId[chunk.versions[0]];
+  }
+}
+
+function syncSelections() {
+  /*
+   * TODO(andrewhead): update the reference to the Santoku adapter if the panel refreshes.
+   */
+  if (SantokuPanel.santokuAdapter !== undefined) {
+    SantokuPanel.santokuAdapter.addStateChangeListener(updateSelections);
+  }
+
+  vscode.window.onDidChangeTextEditorSelection(event => {
+    const editor = event.textEditor;
+    /**
+     * Only report selection changes from the active text editor. Assume that selections in
+     * all other editors are just updating to reflect selections in an active editor. Updates
+     * to the active editor from external sources are already filtered out in the
+     * 'updateSelections' callback.
+     */
+    if (SantokuPanel.santokuAdapter !== undefined && isEditorActive(editor)) {
+      SantokuPanel.santokuAdapter.dispatch(
+        actions.text.setSelections(
+          ...event.selections.map(s => {
+            return {
+              anchor: s.anchor,
+              active: s.active,
+              path: editor.document.fileName,
+              relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
+            } as Selection;
+          })
+        )
+      );
+    }
+  });
+}
+
 function updateSelections(state: State) {
   for (const editor of vscode.window.visibleTextEditors) {
     /**
@@ -74,7 +143,7 @@ function updateSelections(state: State) {
      * application; an active editor is probably generating the selections, and a non-active
      * editor should be used to mirror selections from an active editor.
      */
-    if (editor !== vscode.window.activeTextEditor) {
+    if (!isEditorActive(editor)) {
       const selections = state.text.present.selections
         .filter(s => s.path === editor.document.fileName)
         .map(s => {

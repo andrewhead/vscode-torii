@@ -13,24 +13,26 @@ export class SantokuPanel {
   public static currentPanel: SantokuPanel | undefined;
   public static santokuAdapter: SantokuAdapter | undefined;
 
-  private static readonly TAB_TITLE = "Document Editor";
+  private static readonly TAB_TITLE = "Tutorial Editor";
   private static readonly VIEW_TYPE = "santoku";
 
+  private readonly _debug: boolean;
   private readonly _panel: vscode.WebviewPanel;
   private readonly _santokuAppPath: string;
   private _disposables: vscode.Disposable[] = [];
 
-  public static createOrShow(extensionPath: string) {
+  public static createOrShow(extensionPath: string, debug = false) {
     // If there's already a panel, show it. Otherwise, create a new panel.
     if (SantokuPanel.currentPanel) {
       SantokuPanel.currentPanel._panel.reveal();
     } else {
-      SantokuPanel.currentPanel = new SantokuPanel(extensionPath, vscode.ViewColumn.Beside);
+      SantokuPanel.currentPanel = new SantokuPanel(extensionPath, vscode.ViewColumn.Beside, debug);
     }
   }
 
-  private constructor(extensionPath: string, column: vscode.ViewColumn) {
+  private constructor(extensionPath: string, column: vscode.ViewColumn, debug: boolean) {
     this._santokuAppPath = path.join(extensionPath, "node_modules", "santoku", "build");
+    this._debug = debug;
 
     this._panel = vscode.window.createWebviewPanel(
       SantokuPanel.VIEW_TYPE,
@@ -81,6 +83,19 @@ export class SantokuPanel {
     // Use a nonce to whitelist which scripts can be run
     const nonce = generateNonce();
 
+    /*
+     * Only load scripts from vscode resources. 'strict-dynamic' allows scripts already included
+     * with the nonce to include other scripts. This is necessary for loading chunks from the
+     * monaco webpack extension (monaco styles).
+     */
+    let scriptSecurityPolicy = `vscode-resource: 'nonce-${nonce}' 'strict-dynamic'`;
+    /*
+     * If in debug mode, allow 'unsafe-eval' to load in sourcemaps for debugging.
+     */
+    if (this._debug) {
+      scriptSecurityPolicy += " 'unsafe-eval'";
+    }
+
     return `<!DOCTYPE html>
 			<html lang="en">
 			<head>
@@ -91,7 +106,10 @@ export class SantokuPanel {
         <link rel="stylesheet" type="text/css" href="${styleUri}">
         <!--Use 'unsafe-eval' when debugging this extension to enable reading source maps, to make debugging easier.-->
         <meta http-equiv="Content-Security-Policy"
-          content="default-src 'none'; img-src vscode-resource: https:; script-src 'nonce-${nonce}' 'unsafe-eval';style-src vscode-resource: 'unsafe-inline' http: https: data:;">
+          content="default-src 'none';
+          img-src vscode-resource: https: data:;
+          script-src ${scriptSecurityPolicy};
+          style-src vscode-resource: 'unsafe-inline' http: https: data:;">
 				<base href="${vscode.Uri.file(this._santokuAppPath).with({ scheme: "vscode-resource" })}/">
 			</head>
 			<body>
