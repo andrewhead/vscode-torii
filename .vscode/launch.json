@@ -11,7 +11,7 @@
      * must use this configuration, or else the app won't load in the webview.
      */
     {
-      "name": "Run Extension in DEBUG mode",
+      "name": "Run Extension in Debug Mode",
       "type": "extensionHost",
       "request": "launch",
       "runtimeExecutable": "${execPath}",

@@ -5,6 +5,8 @@ import { WebviewSantokuConnector } from "./webview-santoku-connector";
 
 /**
  * Panel for holding the Santoku editor.
+ * TODO(andrewhead): To enable web workers in the Santoku application, the Santoku application
+ * must be accessed over a server, not as a file.
  */
 export class SantokuPanel {
   /**
@@ -17,8 +19,11 @@ export class SantokuPanel {
   private static readonly VIEW_TYPE = "santoku";
 
   private readonly _debug: boolean;
+
   private readonly _panel: vscode.WebviewPanel;
   private readonly _santokuAppPath: string;
+
+  private static _adapterCreatedListeners: SantokuAdapterCreatedListener[] = [];
   private _disposables: vscode.Disposable[] = [];
 
   public static createOrShow(extensionPath: string, debug = false) {
@@ -28,6 +33,19 @@ export class SantokuPanel {
     } else {
       SantokuPanel.currentPanel = new SantokuPanel(extensionPath, vscode.ViewColumn.Beside, debug);
     }
+  }
+
+  /**
+   * Returns a callback that can be used to unsubscribe from updates.
+   */
+  public static onSantokuAdapterCreated(listener: (santokuAdapter: SantokuAdapter) => void) {
+    SantokuPanel._adapterCreatedListeners.push(listener);
+    return () => {
+      const index = SantokuPanel._adapterCreatedListeners.indexOf(listener);
+      if (index !== -1) {
+        SantokuPanel._adapterCreatedListeners.splice(index, 1);
+      }
+    };
   }
 
   private constructor(extensionPath: string, column: vscode.ViewColumn, debug: boolean) {
@@ -50,6 +68,9 @@ export class SantokuPanel {
     SantokuPanel.santokuAdapter = new SantokuAdapter(
       new WebviewSantokuConnector(this._panel.webview)
     );
+    for (const listener of SantokuPanel._adapterCreatedListeners) {
+      listener(SantokuPanel.santokuAdapter);
+    }
 
     // Set the webview's initial HTML content
     this._panel.webview.html = this._getInitialHtml();
@@ -135,3 +156,5 @@ export function generateNonce() {
   }
   return text;
 }
+
+type SantokuAdapterCreatedListener = (santokuAdapter: SantokuAdapter) => void;
