@@ -32,7 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
       const chunks: InitialChunk[] = [];
       if (activeTextEditor !== undefined) {
         const path = activeTextEditor.document.fileName;
-        const state = SantokuPanel.santokuAdapter.state;
+        const state = SantokuPanel.santokuAdapter.getState();
         if (state === undefined || !stateUtils.isPathActive(path, state.text.present)) {
           SantokuPanel.santokuAdapter.dispatch(
             actions.text.uploadFileContents(path, activeTextEditor.document.getText())
@@ -75,7 +75,12 @@ function isDocumentActive(document: vscode.TextDocument): boolean {
 }
 
 function syncText(santokuAdapter: SantokuAdapter) {
-  santokuAdapter.addStateChangeListener(updateText);
+  santokuAdapter.subscribe(() => {
+    const state = santokuAdapter.getState();
+    if (state !== undefined) {
+      updateText(state);
+    }
+  });
 
   vscode.workspace.onDidChangeTextDocument(event => {
     const document = event.document;
@@ -131,7 +136,12 @@ function updateText(state: State) {
 }
 
 function syncSelections(santokuAdapter: SantokuAdapter) {
-  santokuAdapter.addStateChangeListener(updateSelections);
+  santokuAdapter.subscribe(() => {
+    const state = santokuAdapter.getState();
+    if (state !== undefined) {
+      updateSelections(state);
+    }
+  });
 
   vscode.window.onDidChangeTextEditorSelection(event => {
     const editor = event.textEditor;
