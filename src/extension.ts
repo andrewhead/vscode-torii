@@ -33,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
       if (activeTextEditor !== undefined) {
         const path = activeTextEditor.document.fileName;
         const state = SantokuPanel.santokuAdapter.getState();
-        if (state === undefined || !stateUtils.isPathActive(path, state.text.present)) {
+        if (state === undefined || !stateUtils.isPathActive(path, state.undoable.present)) {
           SantokuPanel.santokuAdapter.dispatch(
             actions.text.uploadFileContents(path, activeTextEditor.document.getText())
           );
@@ -104,7 +104,7 @@ function syncText(santokuAdapter: SantokuAdapter) {
 }
 
 function updateText(state: State) {
-  const textState = state.text.present;
+  const textState = state.undoable.present;
   const activePaths = stateUtils.getActivePaths(textState);
   /*
    * TODO(andrewhead): also have to update state of an editor when it's opened.
@@ -176,7 +176,8 @@ function updateSelections(state: State) {
      * editor should be used to mirror selections from an active editor.
      */
     if (!isEditorActive(editor)) {
-      const selections = state.text.present.selections
+      const textState = state.undoable.present;
+      const selections = textState.selections
         .filter(s => s.path === editor.document.fileName)
         .map(s => {
           if (s.relativeTo.source === SourceType.REFERENCE_IMPLEMENTATION) {
@@ -185,8 +186,8 @@ function updateSelections(state: State) {
               new vscode.Position(s.active.line - 1, s.active.character)
             );
           } else if (s.relativeTo.source === SourceType.CHUNK_VERSION) {
-            const chunkVersion = state.text.present.chunkVersions.byId[s.relativeTo.chunkVersionId];
-            const chunk = state.text.present.chunks.byId[chunkVersion.chunk];
+            const chunkVersion = textState.chunkVersions.byId[s.relativeTo.chunkVersionId];
+            const chunk = textState.chunks.byId[chunkVersion.chunk];
             const offset = chunk.location.line;
             return new vscode.Selection(
               new vscode.Position(s.anchor.line - 1 + offset - 1, s.anchor.character),
