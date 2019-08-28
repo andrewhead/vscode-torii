@@ -11,7 +11,9 @@
     "Other"
   ],
   "activationEvents": [
-    "onCommand:santoku.start"
+    "onCommand:santoku.start",
+    "onCommand:santoku.test.runCommand",
+    "onCommand:santoku.test.requireConfig"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -23,6 +25,14 @@
       {
         "command": "santoku.addSnippet",
         "title": "Add snippet"
+      },
+      {
+        "command": "santoku.test.runCommand",
+        "title": "Run command"
+      },
+      {
+        "command": "santoku.test.requireConfig",
+        "title": "Require config"
       }
     ]
   },
@@ -35,13 +45,19 @@
   },
   "devDependencies": {
     "@types/glob": "^7.1.1",
+    "@types/lodash": "^4.14.137",
     "@types/mocha": "^5.2.6",
     "@types/node": "^10.12.21",
+    "@types/uuid": "^3.4.5",
     "@types/vscode": "^1.36.0",
     "glob": "^7.1.4",
     "mocha": "^6.1.4",
-    "typescript": "^3.3.1",
     "tslint": "^5.12.1",
+    "typescript": "^3.3.1",
     "vscode-test": "^1.0.2"
+  },
+  "dependencies": {
+    "lodash": "^4.17.15",
+    "uuid": "^3.3.3"
   }
 }

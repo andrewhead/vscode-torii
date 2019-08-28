@@ -1,5 +1,5 @@
 import { SantokuAdapter } from "santoku-editor-adapter";
-import { actions, InitialChunk, Selection, SourceType, State, stateUtils } from "santoku-store";
+import { actions, InitialChunk, Selection, selectors, SourceType, State } from "santoku-store";
 import * as vscode from "vscode";
 import { SantokuPanel } from "./santoku-panel";
 
@@ -22,18 +22,30 @@ export function activate(context: vscode.ExtensionContext) {
     syncText(adapter);
   });
 
-  let startCommand = vscode.commands.registerCommand("santoku.start", () => {
+  // function getPathToWorkspace(): string | null {
+  //   const workspaceFolders = vscode.workspace.workspaceFolders;
+  //   if (workspaceFolders === undefined || workspaceFolders.length === 0) {
+  //     return null;
+  //   }
+  //   const rootPath = workspaceFolders[0].uri;
+  //   if (rootPath.scheme !== "file") {
+  //     return null;
+  //   }
+  //   return rootPath.fsPath;
+  // }
+
+  const startCommand = vscode.commands.registerCommand("santoku.start", () => {
     SantokuPanel.createOrShow(context.extensionPath, context.globalState.get(DEBUG_MODE_KEY));
   });
 
-  let addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
+  const addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
     if (SantokuPanel.currentPanel !== undefined && SantokuPanel.santokuAdapter !== undefined) {
       const activeTextEditor = vscode.window.activeTextEditor;
       const chunks: InitialChunk[] = [];
       if (activeTextEditor !== undefined) {
         const path = activeTextEditor.document.fileName;
         const state = SantokuPanel.santokuAdapter.getState();
-        if (state === undefined || !stateUtils.isPathActive(path, state.undoable.present)) {
+        if (state === undefined || !selectors.state.isPathActive(path, state.undoable.present)) {
           SantokuPanel.santokuAdapter.dispatch(
             actions.text.uploadFileContents(path, activeTextEditor.document.getText())
           );
@@ -105,7 +117,7 @@ function syncText(santokuAdapter: SantokuAdapter) {
 
 function updateText(state: State) {
   const textState = state.undoable.present;
-  const activePaths = stateUtils.getActivePaths(textState);
+  const activePaths = selectors.state.getActivePaths(textState);
   /*
    * TODO(andrewhead): also have to update state of an editor when it's opened.
    */
@@ -113,7 +125,7 @@ function updateText(state: State) {
     if (!isEditorActive(editor)) {
       for (const path of activePaths) {
         if (editor.document.fileName === path) {
-          const newText = stateUtils.getReferenceImplementationText(textState, path);
+          const newText = selectors.text.getReferenceImplementationText(textState, path);
           if (newText !== editor.document.getText()) {
             /*
              * TODO(andrewhead): diff the code and apply localized edits, so the whole file
