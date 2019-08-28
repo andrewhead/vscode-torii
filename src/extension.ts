@@ -1,4 +1,6 @@
+import * as path from "path";
 import { SantokuAdapter } from "santoku-editor-adapter";
+import { CommandUpdate, OutputGenerators, readConfig } from "santoku-extension";
 import { actions, InitialChunk, Selection, selectors, SourceType, State } from "santoku-store";
 import * as vscode from "vscode";
 import { SantokuPanel } from "./santoku-panel";
@@ -20,19 +22,8 @@ export function activate(context: vscode.ExtensionContext) {
   SantokuPanel.onSantokuAdapterCreated(adapter => {
     syncSelections(adapter);
     syncText(adapter);
+    updateOutputs(adapter);
   });
-
-  // function getPathToWorkspace(): string | null {
-  //   const workspaceFolders = vscode.workspace.workspaceFolders;
-  //   if (workspaceFolders === undefined || workspaceFolders.length === 0) {
-  //     return null;
-  //   }
-  //   const rootPath = workspaceFolders[0].uri;
-  //   if (rootPath.scheme !== "file") {
-  //     return null;
-  //   }
-  //   return rootPath.fsPath;
-  // }
 
   const startCommand = vscode.commands.registerCommand("santoku.start", () => {
     SantokuPanel.createOrShow(context.extensionPath, context.globalState.get(DEBUG_MODE_KEY));
@@ -43,11 +34,17 @@ export function activate(context: vscode.ExtensionContext) {
       const activeTextEditor = vscode.window.activeTextEditor;
       const chunks: InitialChunk[] = [];
       if (activeTextEditor !== undefined) {
-        const path = activeTextEditor.document.fileName;
+        const relativePath = getPathRelativeToWorkspace(activeTextEditor.document.fileName);
+        if (relativePath === null) {
+          return;
+        }
         const state = SantokuPanel.santokuAdapter.getState();
-        if (state === undefined || !selectors.state.isPathActive(path, state.undoable.present)) {
+        if (
+          state === undefined ||
+          !selectors.state.isPathActive(relativePath, state.undoable.present)
+        ) {
           SantokuPanel.santokuAdapter.dispatch(
-            actions.text.uploadFileContents(path, activeTextEditor.document.getText())
+            actions.text.uploadFileContents(relativePath, activeTextEditor.document.getText())
           );
         }
         const selections = activeTextEditor.selections;
@@ -55,7 +52,7 @@ export function activate(context: vscode.ExtensionContext) {
           const startLine = selection.start.line;
           const endLine = selection.end.line;
           const chunk: InitialChunk = {
-            location: { path: activeTextEditor.document.fileName, line: startLine + 1 },
+            location: { path: relativePath, line: startLine + 1 },
             text: activeTextEditor.document.getText(
               new vscode.Range(
                 new vscode.Position(startLine, 0),
@@ -99,12 +96,16 @@ function syncText(santokuAdapter: SantokuAdapter) {
     if (isDocumentActive(document)) {
       for (const change of event.contentChanges) {
         const range = change.range;
+        const relativePath = getPathRelativeToWorkspace(document.fileName);
+        if (relativePath === null) {
+          continue;
+        }
         santokuAdapter.dispatch(
           actions.text.edit(
             {
               start: { line: range.start.line + 1, character: range.start.character },
               end: { line: range.end.line + 1, character: range.end.character },
-              path: document.fileName,
+              path: relativePath,
               relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
             },
             change.text
@@ -124,7 +125,8 @@ function updateText(state: State) {
   for (const editor of vscode.window.visibleTextEditors) {
     if (!isEditorActive(editor)) {
       for (const path of activePaths) {
-        if (editor.document.fileName === path) {
+        const relativePath = getPathRelativeToWorkspace(editor.document.fileName);
+        if (relativePath !== null && relativePath === path) {
           const newText = selectors.text.getReferenceImplementationText(textState, path);
           if (newText !== editor.document.getText()) {
             /*
@@ -157,20 +159,21 @@ function syncSelections(santokuAdapter: SantokuAdapter) {
 
   vscode.window.onDidChangeTextEditorSelection(event => {
     const editor = event.textEditor;
+    const relativePath = getPathRelativeToWorkspace(editor.document.fileName);
     /**
      * Only report selection changes from the active text editor. Assume that selections in
      * all other editors are just updating to reflect selections in an active editor. Updates
      * to the active editor from external sources are already filtered out in the
      * 'updateSelections' callback.
      */
-    if (isEditorActive(editor)) {
+    if (isEditorActive(editor) && relativePath !== null) {
       santokuAdapter.dispatch(
         actions.text.setSelections(
           ...event.selections.map(s => {
             return {
               anchor: { line: s.anchor.line + 1, character: s.anchor.character },
               active: { line: s.active.line + 1, character: s.active.character },
-              path: editor.document.fileName,
+              path: relativePath,
               relativeTo: { source: SourceType.REFERENCE_IMPLEMENTATION }
             } as Selection;
           })
@@ -182,15 +185,16 @@ function syncSelections(santokuAdapter: SantokuAdapter) {
 
 function updateSelections(state: State) {
   for (const editor of vscode.window.visibleTextEditors) {
+    const relativePath = getPathRelativeToWorkspace(editor.document.fileName);
     /**
      * Only update selections in non-active editors. Assume for now that VSCode is a single-user
      * application; an active editor is probably generating the selections, and a non-active
      * editor should be used to mirror selections from an active editor.
      */
-    if (!isEditorActive(editor)) {
+    if (!isEditorActive(editor) && relativePath !== null) {
       const textState = state.undoable.present;
       const selections = textState.selections
-        .filter(s => s.path === editor.document.fileName)
+        .filter(s => s.path === relativePath)
         .map(s => {
           if (s.relativeTo.source === SourceType.REFERENCE_IMPLEMENTATION) {
             return new vscode.Selection(
@@ -211,6 +215,80 @@ function updateSelections(state: State) {
       editor.selections = selections;
     }
   }
+}
+
+function updateOutputs(santokuAdapter: SantokuAdapter) {
+  const pathToWorkspace = getPathToWorkspace();
+  if (pathToWorkspace === null) {
+    return;
+  }
+
+  const { config, error } = readConfig(pathToWorkspace);
+  if (error !== null) {
+    vscode.window.showErrorMessage("Error loading config: " + error);
+    return;
+  }
+
+  const stagingPath = path.join(pathToWorkspace, ".staging");
+  const outputGenerators = new OutputGenerators({
+    configs: config.outputGenerators,
+    stagePath: stagingPath
+  });
+
+  let previousState: State | undefined = undefined;
+  santokuAdapter.subscribe(() => {
+    const state = santokuAdapter.getState();
+    const changedSnapshots = selectors.state.getChangedSnapshots(previousState, state);
+    previousState = state;
+    for (const snippetId of changedSnapshots) {
+      if (state !== undefined) {
+        const fileContents = selectors.text.getFileContents(state, snippetId);
+        outputGenerators.generateOutputs({
+          jobId: snippetId,
+          fileContents,
+          callback: onOutputUpdate.bind(null, santokuAdapter)
+        });
+      }
+    }
+  });
+}
+
+function onOutputUpdate(santokuAdapter: SantokuAdapter, update: CommandUpdate): void {
+  const { jobId, commandId } = update;
+  console.log("Update:\n", JSON.stringify(update, undefined, 2));
+  switch (update.state) {
+    case "started":
+      santokuAdapter.dispatch(actions.outputs.startExecution(jobId, commandId, update.type));
+      break;
+    case "running":
+      santokuAdapter.dispatch(actions.outputs.updateExecution(jobId, commandId, update.log));
+      break;
+    case "finished":
+      santokuAdapter.dispatch(
+        actions.outputs.finishExecution(jobId, commandId, update.log, update.log.contents)
+      );
+      break;
+  }
+}
+
+function getPathRelativeToWorkspace(filePath: string): string | null {
+  const workspacePath = getPathToWorkspace();
+  if (workspacePath === null) {
+    return null;
+  }
+  return path.relative(workspacePath, filePath);
+}
+
+function getPathToWorkspace(): string | null {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders === undefined || workspaceFolders.length === 0) {
+    return null;
+  }
+  const rootPath = workspaceFolders[0].uri;
+  if (rootPath.scheme !== "file") {
+    return null;
+  }
+  return rootPath.fsPath;
 }
 
 // this method is called when your extension is deactivated
