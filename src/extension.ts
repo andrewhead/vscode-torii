@@ -32,19 +32,20 @@ export function activate(context: vscode.ExtensionContext) {
   const addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
     if (SantokuPanel.currentPanel !== undefined && SantokuPanel.santokuAdapter !== undefined) {
       const activeTextEditor = vscode.window.activeTextEditor;
+      const santoku = SantokuPanel.santokuAdapter;
       const chunks: InitialChunk[] = [];
       if (activeTextEditor !== undefined) {
         const relativePath = getPathRelativeToWorkspace(activeTextEditor.document.fileName);
         if (relativePath === null) {
           return;
         }
-        const state = SantokuPanel.santokuAdapter.getState();
+        const state = santoku.getState();
         if (
           state === undefined ||
           !selectors.state.isPathActive(relativePath, state.undoable.present)
         ) {
           SantokuPanel.santokuAdapter.dispatch(
-            actions.text.uploadFileContents(relativePath, activeTextEditor.document.getText())
+            actions.code.uploadFileContents(relativePath, activeTextEditor.document.getText())
           );
         }
         const selections = activeTextEditor.selections;
@@ -64,7 +65,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }
       if (chunks.length > 0) {
-        SantokuPanel.santokuAdapter.dispatch(actions.text.createSnippet(0, ...chunks));
+        santoku.dispatch(actions.code.insertSnippet(santoku.getState(), ...chunks));
       }
     }
   });
@@ -101,7 +102,7 @@ function syncText(santokuAdapter: SantokuAdapter) {
           continue;
         }
         santokuAdapter.dispatch(
-          actions.text.edit(
+          actions.code.edit(
             {
               start: { line: range.start.line + 1, character: range.start.character },
               end: { line: range.end.line + 1, character: range.end.character },
@@ -127,7 +128,7 @@ function updateText(state: State) {
       for (const path of activePaths) {
         const relativePath = getPathRelativeToWorkspace(editor.document.fileName);
         if (relativePath !== null && relativePath === path) {
-          const newText = selectors.text.getReferenceImplementationText(textState, path);
+          const newText = selectors.code.getReferenceImplementationText(textState, path);
           if (newText !== editor.document.getText()) {
             /*
              * TODO(andrewhead): diff the code and apply localized edits, so the whole file
@@ -168,7 +169,7 @@ function syncSelections(santokuAdapter: SantokuAdapter) {
      */
     if (isEditorActive(editor) && relativePath !== null) {
       santokuAdapter.dispatch(
-        actions.text.setSelections(
+        actions.code.setSelections(
           ...event.selections.map(s => {
             return {
               anchor: { line: s.anchor.line + 1, character: s.anchor.character },
@@ -242,7 +243,7 @@ function updateOutputs(santokuAdapter: SantokuAdapter) {
     previousState = state;
     for (const snippetId of changedSnapshots) {
       if (state !== undefined) {
-        const fileContents = selectors.text.getFileContents(state, snippetId);
+        const fileContents = selectors.code.getFileContents(state, snippetId);
         outputGenerators.generateOutputs({
           jobId: snippetId,
           fileContents,
@@ -255,7 +256,7 @@ function updateOutputs(santokuAdapter: SantokuAdapter) {
 
 function onOutputUpdate(santokuAdapter: SantokuAdapter, update: CommandUpdate): void {
   const { jobId, commandId } = update;
-  console.log("Update:\n", JSON.stringify(update, undefined, 2));
+  // console.log("Update:\n", JSON.stringify(update, undefined, 2));
   switch (update.state) {
     case "started":
       santokuAdapter.dispatch(actions.outputs.startExecution(jobId, commandId, update.type));
