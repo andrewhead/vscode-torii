@@ -1,8 +1,4 @@
-# santoku README
-
-This is the README for your extension "santoku". After
-writing up a brief description, we recommend including the
-following sections.
+# Torii: Complete, Consistent Programming Tutorials by Design
 
 Thanks to
 [`vscode-webview-react`](https://github.com/rebornix/vscode-webview-react)

@@ -61,7 +61,13 @@ export class SantokuPanel {
         enableScripts: true,
 
         // Restrict the webview to only load content from the extension's `media` directory.
-        localResourceRoots: [vscode.Uri.file(this._santokuAppPath)]
+        localResourceRoots: [vscode.Uri.file(this._santokuAppPath)],
+
+        /*
+         * Yes it's expensive to retain content, though state needs to be retained somehow to
+         * ensure the user doesn't lose their work when they switch to another tab.
+         */
+        retainContextWhenHidden: true
       }
     );
 

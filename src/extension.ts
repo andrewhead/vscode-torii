@@ -7,6 +7,13 @@ import { SantokuPanel } from "./santoku-panel";
 
 export const DEBUG_MODE_KEY = "DEBUG_MODE";
 
+/*
+ * When distributing this extension, set this variable to 'false'. When this flag is set to true,
+ * it makes debugging easier by allowing the extension to load a copy of the Santoku app compiled
+ * with source maps built-in. But it also allows unsafe evaluation of inline scripts.
+ */
+const DEVELOPER_MODE = true;
+
 export function activate(context: vscode.ExtensionContext) {
   console.log("Santoku has been activated!");
 
@@ -14,7 +21,7 @@ export function activate(context: vscode.ExtensionContext) {
    * Inspect environment variables to decide if the extension should run in debug mode.
    */
   if (process !== undefined && process.env !== undefined) {
-    context.globalState.update(DEBUG_MODE_KEY, process.env.DEBUG === "true");
+    context.globalState.update(DEBUG_MODE_KEY, DEVELOPER_MODE === true);
   } else {
     context.globalState.update(DEBUG_MODE_KEY, false);
   }

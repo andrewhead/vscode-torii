@@ -11,18 +11,6 @@
      * must use this configuration, or else the app won't load in the webview.
      */
     {
-      "name": "Run Extension in Debug Mode",
-      "type": "extensionHost",
-      "request": "launch",
-      "runtimeExecutable": "${execPath}",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}"],
-      "env": {
-        "DEBUG": "true"
-      },
-      "outFiles": ["${workspaceFolder}/out/**/*.js"],
-      "preLaunchTask": "npm: watch"
-    },
-    {
       "name": "Run Extension",
       "type": "extensionHost",
       "request": "launch",
