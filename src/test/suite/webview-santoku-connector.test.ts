@@ -33,19 +33,19 @@ suite("WebviewSantokuConnector", () => {
       return new Promise(() => {});
     };
     const connector = new WebviewSantokuConnector(wv);
-    connector.sendMessage({ id: "message-id", type: "example-type", data: {} });
-    assert.deepEqual(messageSent, { id: "message-id", type: "example-type", data: {} });
+    connector.sendMessage({ id: "message-id", type: "EMPTY", data: {} });
+    assert.deepEqual(messageSent, { id: "message-id", type: "EMPTY", data: {} });
   });
 
   test("forwards messages sent from the window to subscribers", done => {
     const wv = webview();
     const listener = (message: Message) => {
-      assert.strictEqual(message.type, "type");
+      assert.strictEqual(message.type, "EMPTY");
       assert.deepStrictEqual(message.data, {});
       done();
     };
     const connector = new WebviewSantokuConnector(wv);
     connector.subscribe(listener);
-    triggerWebviewMessage(wv, { id: "message-id", type: "type", data: {} });
+    triggerWebviewMessage(wv, { id: "message-id", type: "EMPTY", data: {} });
   });
 });

@@ -148,6 +148,7 @@ export class SantokuPanel {
           <!--Open a connection from Santoku to this editor.-->
           const connector = new santoku.VsCodeWebviewEditorConnector(acquireVsCodeApi());
           const adapter = new santoku.EditorAdapter(santoku.store, connector);
+          santoku.setEditorAdapter(adapter);
 				</script>
 			</body>
 			</html>`;

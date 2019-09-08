@@ -1,5 +1,5 @@
 import * as path from "path";
-import { SantokuAdapter } from "santoku-editor-adapter";
+import { EditorRequestType, SantokuAdapter } from "santoku-editor-adapter";
 import { CommandUpdate, OutputGenerators, readConfig } from "santoku-extension";
 import { actions, InitialChunk, Selection, selectors, SourceType, State } from "santoku-store";
 import * as vscode from "vscode";
@@ -30,6 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
     syncSelections(adapter);
     syncText(adapter);
     updateOutputs(adapter);
+    processRequests(adapter);
   });
 
   const startCommand = vscode.commands.registerCommand("santoku.start", () => {
@@ -38,11 +39,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   const addSnippetCommand = vscode.commands.registerCommand("santoku.addSnippet", () => {
     if (SantokuPanel.currentPanel !== undefined && SantokuPanel.santokuAdapter !== undefined) {
-      const activeTextEditor = vscode.window.activeTextEditor;
       const santoku = SantokuPanel.santokuAdapter;
       const chunks: InitialChunk[] = [];
-      if (activeTextEditor !== undefined) {
-        const relativePath = getPathRelativeToWorkspace(activeTextEditor.document.fileName);
+      for (const visibleEditor of vscode.window.visibleTextEditors) {
+        const relativePath = getPathRelativeToWorkspace(visibleEditor.document.fileName);
         if (relativePath === null) {
           return;
         }
@@ -52,16 +52,16 @@ export function activate(context: vscode.ExtensionContext) {
           !selectors.state.isPathActive(relativePath, state.undoable.present)
         ) {
           SantokuPanel.santokuAdapter.dispatch(
-            actions.code.uploadFileContents(relativePath, activeTextEditor.document.getText())
+            actions.code.uploadFileContents(relativePath, visibleEditor.document.getText())
           );
         }
-        const selections = activeTextEditor.selections;
+        const selections = visibleEditor.selections;
         for (const selection of selections) {
           const startLine = selection.start.line;
           const endLine = selection.end.line;
           const chunk: InitialChunk = {
             location: { path: relativePath, line: startLine + 1 },
-            text: activeTextEditor.document.getText(
+            text: visibleEditor.document.getText(
               new vscode.Range(
                 new vscode.Position(startLine, 0),
                 new vscode.Position(endLine, Number.POSITIVE_INFINITY)
@@ -297,6 +297,14 @@ function getPathToWorkspace(): string | null {
     return null;
   }
   return rootPath.fsPath;
+}
+
+function processRequests(santokuAdapter: SantokuAdapter) {
+  santokuAdapter.onRequestReceived(request => {
+    if (request.type === EditorRequestType.INSERT_SNIPPET) {
+      vscode.commands.executeCommand("santoku.addSnippet");
+    }
+  });
 }
 
 // this method is called when your extension is deactivated
