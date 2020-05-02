@@ -4,6 +4,7 @@ import { CommandUpdate, OutputGenerators, readConfig } from "santoku-extension";
 import { actions, InitialChunk, Selection, selectors, SourceType, State } from "santoku-store";
 import * as vscode from "vscode";
 import { SantokuPanel } from "./santoku-panel";
+import { cellActionNames } from "santoku-store/dist/cells/types";
 
 export const DEBUG_MODE_KEY = "DEBUG_MODE";
 
@@ -77,8 +78,55 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  const spliceSnippetCommand = vscode.commands.registerCommand("santoku.spliceSnippet", () => {
+    if (SantokuPanel.currentPanel !== undefined && SantokuPanel.santokuAdapter !== undefined) {
+      const santoku = SantokuPanel.santokuAdapter;
+      const chunks: InitialChunk[] = [];
+      for (const visibleEditor of vscode.window.visibleTextEditors) {
+        const relativePath = getPathRelativeToWorkspace(visibleEditor.document.fileName);
+        if (relativePath === null) {
+          return;
+        }
+        const state = santoku.getState();
+        if (
+          state === undefined ||
+          !selectors.state.isPathActive(relativePath, state.undoable.present)
+        ) {
+          return;
+        } 
+        else {
+          const selections = visibleEditor.selections;
+          for (const selection of selections) {
+            const startLine = selection.start.line;
+            const endLine = selection.end.line;
+            const chunk: InitialChunk = {
+              location: { path: relativePath, line: startLine + 1 },
+              text: visibleEditor.document.getText(
+                new vscode.Range(
+                  new vscode.Position(startLine, 0),
+                  new vscode.Position(endLine, Number.POSITIVE_INFINITY)
+                )
+              )
+            };
+            chunks.push(chunk);
+          }
+        }
+        if (chunks.length > 0) { 
+          const state = santoku.getState().undoable.present;
+          const { selectedCell, cells } = state;
+          const cell = cells.byId[selectedCell];
+          // XXX: this will only work if the selected cell is a snippet cell, otherwise ¯\_(ツ)_/¯
+          const snippetId = cell.contentId as string;
+          santoku.dispatch(actions.code.spliceSnippet(snippetId, ...chunks));
+        } 
+      }
+    }
+    
+  });
+
   context.subscriptions.push(startCommand);
   context.subscriptions.push(addSnippetCommand);
+  context.subscriptions.push(spliceSnippetCommand);
 }
 
 function isEditorActive(editor: vscode.TextEditor): boolean {

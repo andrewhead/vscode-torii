@@ -115,7 +115,8 @@ export class SantokuPanel {
      * with the nonce to include other scripts. This is necessary for loading chunks from the
      * monaco webpack extension (monaco styles).
      */
-    let scriptSecurityPolicy = `vscode-resource: 'nonce-${nonce}' 'strict-dynamic'`;
+    // SECURITY POLICY FOR DEMO ONLY!!
+    let scriptSecurityPolicy = `vscode-resource: 'unsafe-inline'`;
     /*
      * If in debug mode, allow 'unsafe-eval' to load in sourcemaps for debugging.
      */
